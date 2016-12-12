@@ -3,8 +3,8 @@ const settings = require('./gulp-settings.js');
 const path = require('path');
 let entryObj = {};
 
-settings.jsNames.names.forEach(function(item) {
-	entryObj[item] = path.resolve(__dirname, settings.jsDir.entry + item);
+settings.jsES6.names.forEach(function(item) {
+	entryObj[item] = path.resolve(__dirname, settings.jsES6.entry + '/' + item);
 });
 
 module.exports = function(dev) {
@@ -25,6 +25,7 @@ module.exports = function(dev) {
 					exclude: /(node_modules|bower_components)/,
 					loader: 'babel-loader',
 					query: {
+						plugins: ['transform-object-assign'],
 						presets: ['es2015', 'stage-0'],
 						compact: false
 					}

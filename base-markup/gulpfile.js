@@ -1,151 +1,118 @@
 'use strict';
 const gulp = require('gulp');
+const plugins = require('gulp-load-plugins')({
+	pattern: ['gulp-*', 'gulp.*', 'webpack', 'autoprefixer', 'del']
+});
+// const gulpPug = require('gulp-pug');
+const gcmq = require('gulp-group-css-media-queries');
+let isDevelopment = true;
 const path = require('path');
-const del = require('del');
-const webpack = require('webpack');
 const webpackconfig = require('./webpack.config.js');
 const browserSync = require('browser-sync').create();
-const sass = require('gulp-sass');
-const postcss = require('gulp-postcss');
-const autoprefixer = require('autoprefixer');
-const csscomb = require('gulp-csscomb');
-const imagemin = require('gulp-imagemin');
 const settings = require('./gulp-settings.js');
-const gutil = require('gulp-util');
-const pug = require('gulp-pug');
-const sourcemaps = require('gulp-sourcemaps');
-const cache = require('gulp-cached');
 const postcssPlagins = [
-	autoprefixer({
+	plugins.autoprefixer({
 		browsers: ['last 2 version']
 	})
 ];
 // ES-2015 handler
-const webpackHandler = (dev, cb) => {
-	webpack(webpackconfig(dev), (err, stats) => {
-		if (err) throw new gutil.PluginError('webpack', err);
-		gutil.log('[webpack]', stats.toString({
-			// output options
-		}));
+gulp.task('webpack', (cb) => {
+	plugins.webpack(webpackconfig(isDevelopment), (err, stats) => {
+		if (err) throw new plugins.util.PluginError('webpack', err);
+		plugins.util.log('[webpack]', stats.toString({}));
 		cb();
 	});
+});
+
+const reloadPage = (cb) => {
+	browserSync.reload();
+	cb();
 }
 
-const allSass = () => {
-	return gulp.src(
-		[
-			path.resolve(__dirname, settings.scssDir.entry + '*.scss'),
-			'!' + path.resolve(__dirname, settings.scssDir.entry + settings.scssDir.mainFileName + '.scss')
-		],
-		{
-			base: path.resolve(__dirname, settings.scssDir.entry)
-		}
-	)
-	.pipe(sass().on('error', sass.logError))
-	.pipe(postcss(postcssPlagins))
-	.pipe(gulp.dest(path.resolve(__dirname, settings.scssDir.output)));
-};
-
-const mainSass = () => {
-	const scssUrl = path.resolve(__dirname, settings.scssDir.entry + settings.scssDir.mainFileName);
-
-	return gulp.src(
-		scssUrl + '.scss',
-		{
-			base: scssUrl
-		}
-	)
-	.pipe(sourcemaps.init())
-	.pipe(sass().on('error', sass.logError))
-	.pipe(postcss(postcssPlagins))
-	.pipe(sourcemaps.write('./', {includeContent: true}))
-	.pipe(gulp.dest(path.resolve(__dirname, settings.scssDir.mainFileOutput + settings.scssDir.mainFileName)))
-	.pipe(browserSync.stream());
-};
-
-/*
- * all development tasks
-*/
 // compile from sass to css
-gulp.task('sassTask', gulp.series(allSass, mainSass));
+gulp.task('allSass', () => {
+	const entryDir = settings.scssDir.entry;
 
-// compile ES-2015 to ES5;
-// gulp.task('webpackDev', webpackHandler(true));
-gulp.task(function webpackDev(cb) {
-	webpackHandler(true, cb);
+	return gulp.src(
+		path.resolve(__dirname, entryDir + '/*.scss'),
+		{
+			base: entryDir
+		}
+	)
+	.pipe(plugins.plumber(function(error) {
+		plugins.util.log(plugins.util.colors.bold.red(error.message));
+		plugins.util.beep();
+		this.emit('end');
+	}))
+	.pipe(plugins.if(isDevelopment, plugins.sourcemaps.init()))
+	.pipe(plugins.sass().on('error', plugins.sass.logError))
+	.pipe(plugins.postcss(postcssPlagins))
+	.pipe(plugins.if(isDevelopment, plugins.sourcemaps.write('./')))
+	.pipe(plugins.plumber.stop())
+	.pipe(gulp.dest(function(file) {
+		return file.stem === settings.scssDir.mainFileName || file.stem === settings.scssDir.mainFileName + '.css' ?
+			path.resolve(__dirname, settings.scssDir.mainFileOutput) :
+			path.resolve(__dirname, settings.scssDir.output);
+	}))
+	.pipe(plugins.count('## files sass to css compiled', {logFiles: true}))
+	.pipe(browserSync.stream());
 });
 
 // compile from pug to html
-gulp.task(function pugTask() {
+gulp.task('pugPages', function(cb) {
 	return gulp.src(
-			path.resolve(__dirname, settings.pugDir.entry + '*.pug'),
+			[
+				path.resolve(__dirname, settings.pugDir.entry + '/**/*.pug'),
+				'!' + path.resolve(__dirname, settings.pugDir.entry + '/**/_*.pug')
+			],
 			{
 				base: path.resolve(__dirname, settings.pugDir.entry)
 			}
 		)
-		.pipe(pug(
-			{
-				pretty: '\t'
-			}
-		).on('error', err => {
+		.pipe(plugins.cached('pugPages'))
+		.pipe(plugins.plumber(function(error) {
+			plugins.util.log(plugins.util.colors.bold.red(error.message));
+			plugins.util.beep();
+			this.emit('end');
+		}))
+		.pipe(plugins.pug({pretty: '\t'})/*.on('error', err => {
 			console.log(err);
 			cb();
-		}))
-		.pipe(gulp.dest(path.resolve(__dirname, settings.pugDir.output)));
+		})*/)
+		.pipe(plugins.plumber.stop())
+		.pipe(gulp.dest(path.resolve(__dirname, settings.pugDir.output)))
+		.pipe(plugins.count('## pug files compiled', {logFiles: true}));
 });
 
-// copy images
-gulp.task(function copyImages() {
+gulp.task('pugAll', function(cb) {
 	return gulp.src(
-		path.resolve(__dirname, settings.imagesDir.entry + '**/*'),
-		{
-			base: path.resolve(__dirname, settings.imagesDir.entry)
-		}
-	).pipe(gulp.dest(path.resolve(__dirname, settings.imagesDir.output)));
-});
-
-gulp.task(function watch(cb) {
-	gulp.watch(
-		path.resolve(__dirname, settings.scssDir.entry + '**/*.scss'),
-		gulp.series('sassTask')
-	);
-
-	gulp.watch(
-		path.resolve(__dirname, settings.pugDir.entry + '**/*.pug'),
-		gulp.series('pugTask')
-	);
-
-	gulp.watch(
-		path.resolve(__dirname, settings.jsDir.entry + '**/*.js'),
-		gulp.series('webpackDev')
-	);
-
-	gulp.watch(
-		path.resolve(__dirname, settings.imagesDir.entry + '**/*'),
-		gulp.series('copyImages')
-	);
-
-	gulp.watch(
-		[
-			path.resolve(__dirname, settings.jsDir.output + '*.js'),
-			'./*.html'
-		],
-		gulp.series('reloadPage')
-	);
-
-	cb();
-});
-
-gulp.task(function reloadPage(cb) {
-	browserSync.reload();
-	cb();
+			[
+				path.resolve(__dirname, settings.pugDir.entry + '/*.pug')
+			],
+			{
+				base: path.resolve(__dirname, settings.pugDir.entry)
+			}
+		)
+		.pipe(plugins.plumber(function(error) {
+			plugins.util.log(plugins.util.colors.bold.red(error.message));
+			plugins.util.beep();
+			this.emit('end');
+		}))
+		.pipe(plugins.pug({pretty: '\t'})/*
+		.on('error', err => {
+			console.log(err);
+			cb();
+		})*/)
+		// .pipe(plugins.plumber.stop())
+		.pipe(gulp.dest(path.resolve(__dirname, settings.pugDir.output)))
+		.pipe(plugins.count('## pug files compiled', {logFiles: true}));
 });
 
 // server
 const serve = (cb) => (
 	browserSync.init({
 		server: {
-			baseDir: './',
+			baseDir: settings.publicDir,
 			port: 3010,
 			directory: true,
 			notify: false
@@ -153,85 +120,24 @@ const serve = (cb) => (
 	}, cb)
 );
 
-const clearScripts = (cb) => {
-	let jsExceptStr = '';
-
-	settings.jsNames.names.forEach(function(item, index) {
-		jsExceptStr += ((index !== 0 ? '|' : '(') + item + '.js' + (index === settings.jsNames.names.length - 1 ? ')' : ''))
-	});
-
-	del(
-		[
-			path.resolve(__dirname, settings.jsDir.output + '*'),
-			'!' + path.resolve(__dirname, settings.jsDir.output + '*' +jsExceptStr)
-		]
-	).then(paths => {
-		cb();
-	});
-}
-
-// build scripts
-gulp.task('build', gulp.series(clearScripts, function(done) {
-	done();
-	let jsExceptStr = '';
-
-	settings.jsNames.names.forEach(function(item, index) {
-		jsExceptStr += ((index !== 0 ? '|' : '(') + item + '.js' + (index === settings.jsNames.names.length - 1 ? ')' : ''))
-	});
-
+gulp.task('copyScripts', () => {
 	return gulp.src(
 		[
-			path.resolve(__dirname, settings.jsDir.entry + '*'),
-			'!' + path.resolve(__dirname, settings.jsDir.entry + '*' + jsExceptStr),
-			'!' + path.resolve(__dirname, settings.jsDir.entry + 'modules')
+			path.resolve(__dirname, settings.jsDir.entry + '/**/*.*'),
+			'!' + path.resolve(__dirname, settings.jsES6.entry + '/**/*.*')
 		],
 		{
 			base: path.resolve(__dirname, settings.jsDir.entry)
 		}
 	)
-	.pipe(gulp.dest(settings.jsDir.output));
-}));
-
-/*
- * optimization on gulp dist
-*/
-
-const beautifyMainCss = () => {
-	const cssUrl = path.resolve(__dirname, settings.scssDir.mainFileOutput + settings.scssDir.mainFileName);
-
-	return gulp.src(
-			`${cssUrl}.css`,
-			{
-				base: path.resolve(__dirname, settings.scssDir.output)
-			}
-		)
-		.pipe(csscomb())
-		.pipe(gulp.dest(cssUrl));
-};
-
-const beautifyOtherCss = () => {
-	const cssUrl = path.resolve(__dirname, settings.scssDir.output);
-
-	return gulp.src(
-			[
-				`${cssUrl}*.css`,
-				`!${cssUrl}*min.css`
-			],
-			{
-				base: cssUrl
-			}
-		)
-		.pipe(csscomb())
-		.pipe(gulp.dest(cssUrl));
-};
-
-// css beautify
-gulp.task('beautify', gulp.parallel(beautifyMainCss, beautifyOtherCss));
-
+	.pipe(plugins.cached('copyScripts'))
+	.pipe(gulp.dest(settings.jsDir.output))
+	.pipe(plugins.count('## JS files was copied', {logFiles: true}));
+});
 
 // image optimization
-gulp.task(function imagesOptimize() {
-	const entry = path.resolve(__dirname, settings.imagesDir.entry + '**/*.+(png|jpg|gif|svg)');
+gulp.task('imagesOptimize', () => {
+	const entry = path.resolve(__dirname, settings.imagesDir.entry + '/**/*.+(png|jpg|gif|svg)');
 	const output = path.resolve(__dirname, settings.imagesDir.output);
 
 	return gulp.src(
@@ -240,33 +146,134 @@ gulp.task(function imagesOptimize() {
 				base: path.resolve(__dirname, settings.imagesDir.entry)
 			}
 		)
-		.pipe(cache('imagesOptimize'))
-		.pipe(imagemin())
-		.pipe(gulp.dest(output));
-})
-
-// remove JS source map
-gulp.task(function webpackDist(cb) {
-	webpackHandler(false, cb);
+		.pipe(plugins.imagemin())
+		.pipe(gulp.dest(output))
+		.pipe(plugins.count('## images was optimize', {logFiles: true}));
 });
 
-gulp.task(function removeScssSourceMap(cb) {
-	del(
+const beautifyMainCss = () => {
+	const cssUrl = path.resolve(__dirname, settings.scssDir.mainFileOutput + '/' + settings.scssDir.mainFileName);
+
+	return gulp.src(
+			`${cssUrl}.css`,
+			{
+				base: path.resolve(__dirname, settings.scssDir.output)
+			}
+		)
+		.pipe(gcmq())
+		.pipe(plugins.csscomb())
+		.pipe(gulp.dest(cssUrl))
+		.pipe(plugins.count('beautified css files', {logFiles: true}));
+};
+
+const beautifyOtherCss = () => {
+	const cssUrl = path.resolve(__dirname, settings.scssDir.output);
+
+	return gulp.src(
+			[
+				path.resolve(__dirname, settings.scssDir.output + '/*css'),
+				path.resolve(__dirname, settings.scssDir.output + '/*min.css')
+			],
+			{
+				base: cssUrl
+			}
+		)
+		.pipe(gcmq())
+		.pipe(plugins.csscomb())
+		.pipe(gulp.dest(cssUrl))
+		.pipe(plugins.count('beautified css files', {logFiles: true}));
+};
+
+// css beautify
+gulp.task('beautify', gulp.parallel(beautifyMainCss, beautifyOtherCss));
+
+gulp.task('assets', (cb) => {
+	return gulp.src(
+			path.resolve(settings.assetsDir + '/**'),
+			{
+				base: path.resolve(settings.assetsDir)
+			}
+		)
+		.pipe(plugins.cached('assets'))
+		.pipe(gulp.dest(path.resolve(settings.publicDir)))
+		.pipe(plugins.count('## assets files copied', {logFiles: true}));
+});
+
+gulp.task('watch', function(cb) {
+	gulp.watch(
+		path.resolve(__dirname, settings.scssDir.entry + '/**/*.scss'),
+		gulp.series('allSass')
+	);
+
+	gulp.watch(
+		path.resolve(__dirname, settings.pugDir.entry + '/*.pug'),
+		gulp.series('pugPages')
+	).on('unlink', function(filePath) {
+		delete plugins.cached.caches.pugPages[path.resolve(filePath)];
+	});
+
+	gulp.watch(
+		path.resolve(__dirname, settings.pugDir.entry + '/**/_*.pug'),
+		gulp.series('pugAll')
+	);
+
+	gulp.watch(
 		[
-			path.resolve(settings.scssDir.output, '**/*.css.map'),
-			path.resolve(__dirname, settings.scssDir.mainFileOutput + '*.css.map')
-		]
-	).then(paths => {
+			path.resolve(__dirname, settings.jsDir.entry + '/*'),
+			'!' + path.resolve(__dirname, settings.jsES6.entry)
+		],
+		gulp.series('copyScripts')
+	).on('unlink', function(filePath) {
+		delete plugins.cached.caches.copyScripts[path.resolve(filePath)];
+	});
+
+	gulp.watch(
+		path.resolve(__dirname, settings.jsES6.entry + '/**/*.js'),
+		gulp.series('webpack')
+	);
+
+	gulp.watch(
+		path.resolve(__dirname, settings.assetsDir + '/**'),
+		gulp.series('assets')
+	).on('error', () => {})
+	.on('unlink', function(filePath) {
+		delete plugins.cached.caches.assets[path.resolve(filePath)];
+	});
+
+	gulp.watch(
+		[
+			path.resolve(__dirname, settings.jsDir.output + '/*.js'),
+			path.resolve(__dirname, settings.publicDir + '/*.html')
+		],
+		gulp.series(reloadPage)
+	);
+	cb();
+});
+
+gulp.task('clear', (cb) => {
+	plugins.del(path.resolve(settings.publicDir), {read: false}).then(paths => {
 		cb();
 	});
 });
 
-/*
- * run main development tasks
-*/
-gulp.task('clear', done => {
-	cache.caches = {};
-	done();
-});
-gulp.task('dist', gulp.series('build', 'webpackDist', 'imagesOptimize', 'removeScssSourceMap', 'beautify'));
-gulp.task('default', gulp.parallel('clear', 'build', 'webpackDev', 'sassTask', 'copyImages', 'pugTask', 'watch', serve));
+gulp.task('build', gulp.parallel(
+	'assets',
+	'copyScripts',
+	'webpack',
+	'allSass',
+	'pugPages'
+));
+gulp.task('dist', gulp.series(
+	(cb) => {
+		isDevelopment = false;
+		cb();
+	},
+	'clear',
+	'build',
+	gulp.parallel('imagesOptimize', 'beautify')
+));
+gulp.task('default', gulp.series(
+	gulp.parallel(serve, gulp.parallel('build')),
+	'watch'
+));
+

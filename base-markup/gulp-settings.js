@@ -1,23 +1,30 @@
+const devDir = 'dev';
+const publicDir = 'public';
+
 module.exports = {
+	publicDir,
+	devDir,
+	assetsDir: `${devDir}/assets`,
 	imagesDir: {
-		entry: 'assets/images/',
-		output: 'images/'
+		entry: `${publicDir}/images`,
+		output: `${publicDir}/images`
 	},
 	scssDir: {
-		entry: 'assets/scss/',
-		output: 'css/',
+		entry: `${devDir}/scss`,
+		output: `${publicDir}/css`,
 		mainFileName: 'style',
-		mainFileOutput: './'
+		mainFileOutput: publicDir
 	},
 	pugDir: {
-		entry: 'assets/',
-		output: ''
+		entry: devDir,
+		output: publicDir
 	},
 	jsDir: {
-		entry: 'assets/js/',
-		output: 'js/'
+		entry: `${devDir}/js`,
+		output: `${publicDir}/js`
 	},
-	jsNames: {
-		names: ['main', 'jquery.main']
+	jsES6: {
+		entry: `${devDir}/js/es6`,
+		names: ['main']
 	}
 };
