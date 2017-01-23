@@ -3,7 +3,6 @@ const gulp = require('gulp');
 const plugins = require('gulp-load-plugins')({
 	pattern: ['gulp-*', 'gulp.*', 'webpack', 'autoprefixer', 'del']
 });
-// const gulpPug = require('gulp-pug');
 const gcmq = require('gulp-group-css-media-queries');
 let isDevelopment = true;
 const path = require('path');
@@ -34,11 +33,13 @@ gulp.task('allSass', () => {
 	const entryDir = settings.scssDir.entry;
 
 	return gulp.src(
-		path.resolve(__dirname, entryDir + '/*.scss'),
+		path.resolve(__dirname, entryDir + '/**/*.scss'),
 		{
 			base: entryDir
 		}
 	)
+	.pipe(plugins.cached('allSass'))
+	.pipe(plugins.sassMultiInheritance({dir: entryDir + '/'}))
 	.pipe(plugins.plumber(function(error) {
 		plugins.util.log(plugins.util.colors.bold.red(error.message));
 		plugins.util.beep();
@@ -55,7 +56,7 @@ gulp.task('allSass', () => {
 			path.resolve(__dirname, settings.scssDir.output);
 	}))
 	.pipe(plugins.count('## files sass to css compiled', {logFiles: true}))
-	.pipe(browserSync.stream());
+	.pipe(browserSync.stream({match: '**/*.css'}));
 });
 
 // compile from pug to html
@@ -109,7 +110,7 @@ gulp.task('pugAll', function(cb) {
 });
 
 // server
-const serve = (cb) => (
+gulp.task('server', cb => {
 	browserSync.init({
 		server: {
 			baseDir: settings.publicDir,
@@ -117,8 +118,8 @@ const serve = (cb) => (
 			directory: true,
 			notify: false
 		}
-	}, cb)
-);
+	}, cb);
+});
 
 gulp.task('copyScripts', () => {
 	return gulp.src(
@@ -189,13 +190,13 @@ gulp.task('beautify', gulp.parallel(beautifyMainCss, beautifyOtherCss));
 
 gulp.task('assets', (cb) => {
 	return gulp.src(
-			path.resolve(settings.assetsDir + '/**'),
+			path.resolve(__dirname, settings.assetsDir + '/**'),
 			{
-				base: path.resolve(settings.assetsDir)
+				base: path.resolve(__dirname, settings.assetsDir)
 			}
 		)
 		.pipe(plugins.cached('assets'))
-		.pipe(gulp.dest(path.resolve(settings.publicDir)))
+		.pipe(gulp.dest(path.resolve(__dirname, settings.publicDir)))
 		.pipe(plugins.count('## assets files copied', {logFiles: true}));
 });
 
@@ -203,7 +204,9 @@ gulp.task('watch', function(cb) {
 	gulp.watch(
 		path.resolve(__dirname, settings.scssDir.entry + '/**/*.scss'),
 		gulp.series('allSass')
-	);
+	).on('unlink', function(filePath) {
+		delete plugins.cached.caches.allSass[path.resolve(filePath)];
+	});
 
 	gulp.watch(
 		path.resolve(__dirname, settings.pugDir.entry + '/*.pug'),
@@ -251,7 +254,7 @@ gulp.task('watch', function(cb) {
 });
 
 gulp.task('clear', (cb) => {
-	plugins.del(path.resolve(settings.publicDir), {read: false}).then(paths => {
+	plugins.del(path.resolve(__dirname, settings.publicDir), {read: false}).then(paths => {
 		cb();
 	});
 });
@@ -272,8 +275,5 @@ gulp.task('dist', gulp.series(
 	'build',
 	gulp.parallel('imagesOptimize', 'beautify')
 ));
-gulp.task('default', gulp.series(
-	gulp.parallel(serve, gulp.parallel('build')),
-	'watch'
-));
+gulp.task('default', gulp.series('build', 'server', 'watch'));
 

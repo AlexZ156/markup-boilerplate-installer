@@ -1,13 +1,12 @@
 {
   "name": "P2H_GULP_BUILD",
   "version": "1.0.0",
-  "description": "",
   "main": "gulpfile.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "npm i && gulp",
+    "dist": "gulp dist",
+    "update": "npm up"
   },
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "autoprefixer": "^6.3.1",
     "babel-core": "^6.5.1",
@@ -30,8 +29,12 @@
     "gulp-postcss": "^6.0.1",
     "gulp-pug": "^3.1.0",
     "gulp-sass": "^2.0.4",
+    "gulp-sass-multi-inheritance": "^1.0.2",
     "gulp-sourcemaps": "^2.1.1",
     "gulp-util": "^3.0.7",
     "webpack": "^1.13.2"
+  },
+  "dependencies": {
+    "promise-polyfill": "^6.0.2"
   }
 }
